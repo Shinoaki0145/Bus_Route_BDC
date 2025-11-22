@@ -1,25 +1,20 @@
 import pandas as pd
 
-# 1. Đọc dữ liệu
 df = pd.read_csv('mapping_gps_to_stops.csv')
 
-# 2. Tiền xử lý: Đảm bảo datetime đúng định dạng và đã sort (như bước trước)
 df['time_minute'] = pd.to_datetime(df['time_minute'])
 df = df.sort_values(by=['anonymized_vehicle', 'time_minute'])
 
-# Danh sách để lưu kết quả các hành trình
+
 all_trips = []
 
-# 3. Xử lý logic tách hành trình cho từng xe
-# Groupby theo xe để xử lý độc lập
+
 for vehicle_id, vehicle_data in df.groupby('anonymized_vehicle'):
     
-    # Các biến trạng thái
     is_on_trip = False          # Đang đi trên đường hay không
     trip_start_time = None      # Thời điểm bắt đầu (lấy từ dòng Bến xe cuối cùng)
     last_station_time = None    # Lưu lại thời điểm dòng 'Bến xe' gần nhất vừa đọc
     
-    # Duyệt qua từng dòng dữ liệu của xe đó
     for index, row in vehicle_data.iterrows():
         curr_time = row['time_minute']
         stop_type = str(row['StopType']).strip() # Chuyển về string và xóa khoảng trắng thừa
@@ -59,33 +54,27 @@ for vehicle_id, vehicle_data in df.groupby('anonymized_vehicle'):
                     # Bỏ qua, không tính được điểm bắt đầu
                     pass
 
-# 4. Tạo DataFrame từ danh sách hành trình
 trips_df = pd.DataFrame(all_trips)
 
 if not trips_df.empty:
-    # 5. Tính trung bình thời gian di chuyển của từng xe
-    # Group by xe và tính mean của cột duration_seconds
+    # Tính trung bình thời gian di chuyển của từng xe
     avg_duration = trips_df.groupby('vehicle')['duration_seconds'].mean().reset_index()
     avg_duration.rename(columns={'duration_seconds': 'avg_seconds'}, inplace=True)
 
-    # Gộp (Merge) lại bảng hành trình với bảng trung bình
     result_df = pd.merge(trips_df, avg_duration, on='vehicle')
 
-    # 6. LOG RA KẾT QUẢ: Lọc các hành trình > trung bình
     long_trips = result_df[result_df['duration_seconds'] > result_df['avg_seconds']]
 
     print("=== TỔNG HỢP: CÁC HÀNH TRÌNH TỐN NHIỀU THỜI GIAN HƠN TRUNG BÌNH ===")
-    # Chọn các cột cần hiển thị
     output = long_trips[['vehicle', 'start_time', 'end_time', 'duration_seconds', 'avg_seconds']]
     
-    # Làm đẹp hiển thị (đổi avg_seconds sang phút cho dễ đọc)
     output['avg_minutes'] = output['avg_seconds'] / 60
     
     print(output[['vehicle', 'start_time', 'duration_seconds', 'avg_minutes']].to_string())
     
-    # Lưu ra file nếu cần
     output.to_csv('long_trips_report.csv', index=False)
     print("\nĐã lưu kết quả chi tiết vào file 'long_trips_report.csv'")
 
 else:
+
     print("Không tìm thấy hành trình nào thỏa mãn điều kiện (Bến xe -> Đi -> Bến xe).")
